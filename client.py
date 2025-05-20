@@ -1,13 +1,71 @@
-import sys
+def get_chat_from_kakaotalk(self):
+    """카카오톡 창에서 대화 내용 복사해오기"""
+    if not self.kakao_window:
+        if not self.find_kakaotalk_window():
+            return None
+
+    try:
+        # 카카오톡 창 활성화
+        self.kakao_window.set_focus()
+        time.sleep(0.5)
+
+        # 전체 선택 (Ctrl+A)
+        pywinauto.keyboard.send_keys("^a")
+        time.sleep(0.3)
+
+        # 복사 (Ctrl+C)
+        pywinauto.keyboard.send_keys("^c")
+        time.sleep(0.3)
+
+        # 클립보드에서 텍스트 가져오기
+        text = pyperclip.paste()
+
+        # 선택 취소 (Esc)
+        pywinauto.keyboard.send_keys("{ESC}")
+
+        # 앱으로 포커스 다시 가져오기
+        self.activateWindow()
+
+        return text
+    except Exception as e:
+        print(f"카카오톡에서 대화 복사 중 오류: {e}")
+        traceback.print_exc()
+        return None
+
+
+def auto_fetch_button_clicked(self):
+    """자동 가져오기 버튼 클릭 시 처리"""
+    if not self.kakao_window:
+        success = self.find_kakaotalk_window()
+        if not success:
+            QMessageBox.warning(self, "카카오톡 찾기 실패",
+                                "카카오톡 창을 찾을 수 없습니다. 카카오톡이 실행 중인지 확인해주세요.")
+            return
+
+    chat_text = self.get_chat_from_kakaotalk()
+    if chat_text:
+        self.chat_text.setPlainText(chat_text)
+        QMessageBox.information(self, "대화 가져오기 성공",
+                                "카카오톡 대화 내용을 성공적으로 가져왔습니다.")
+    else:
+        QMessageBox.warning(self, "대화 가져오기 실패",
+                            "카카오톡 대화 내용을 가져오는데 실패했습니다.")
+        import sys
+
+
 import os
 import pyperclip
 import openai
 import json
 from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton, QVBoxLayout,
-                             QHBoxLayout, QTextEdit, QLabel, QFrame)
+                             QHBoxLayout, QTextEdit, QLabel, QFrame, QMessageBox)
 from PyQt5.QtCore import Qt, QPoint, QTimer
 from PyQt5.QtGui import QFont, QIcon, QColor
 import pywinauto
+import win32gui
+import win32con
+import time
+import traceback
 
 # OpenAI API 키 설정 (환경 변수에서 가져오거나 직접 입력)
 # openai.api_key = os.environ.get("OPENAI_API_KEY")
@@ -119,7 +177,25 @@ class KakaoTalkAssistant(QWidget):
 
         # 자동 복사 옵션
         auto_copy_layout = QHBoxLayout()
-        self.auto_copy_button = QPushButton("자동 가져오기")
+
+        # 자동 가져오기 버튼 추가
+        fetch_button = QPushButton("대화 자동 가져오기")
+        fetch_button.setStyleSheet("""
+            QPushButton {
+                background-color: #A3E1FF;
+                color: #3C1E1E;
+                border: none;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #7DCFFF;
+            }
+        """)
+        fetch_button.clicked.connect(self.auto_fetch_button_clicked)
+
+        # 자동 붙여넣기 버튼
+        self.auto_copy_button = QPushButton("자동 붙여넣기")
         self.auto_copy_button.setCheckable(True)
         self.auto_copy_button.setStyleSheet("""
             QPushButton {
@@ -135,6 +211,7 @@ class KakaoTalkAssistant(QWidget):
         """)
         self.auto_copy_button.clicked.connect(self.toggle_auto_copy)
 
+        auto_copy_layout.addWidget(fetch_button)
         auto_copy_layout.addWidget(self.auto_copy_button)
         auto_copy_layout.addStretch()
 
@@ -210,29 +287,51 @@ class KakaoTalkAssistant(QWidget):
         if self.auto_copy_button.isChecked():
             # 카카오톡 창 찾기 시도
             try:
-                self.find_kakaotalk_window()
-                if not self.kakao_window:
+                success = self.find_kakaotalk_window()
+                if not success or not self.kakao_window:
                     self.auto_copy_button.setChecked(False)
+                    QMessageBox.warning(self, "카카오톡 찾기 실패",
+                                        "카카오톡 창을 찾을 수 없습니다. 카카오톡이 실행 중인지 확인해주세요.")
+                else:
+                    QMessageBox.information(self, "카카오톡 연결 성공",
+                                            "카카오톡 창을 찾았습니다. 자동 붙여넣기가 활성화되었습니다.")
             except Exception as e:
                 print(f"카카오톡 창을 찾는 중 오류 발생: {e}")
+                traceback.print_exc()
                 self.auto_copy_button.setChecked(False)
+                QMessageBox.warning(self, "오류", f"카카오톡 창을 찾는 중 오류가 발생했습니다: {e}")
 
     def find_kakaotalk_window(self):
         """카카오톡 창을 찾아 저장"""
         try:
-            # pywinauto를 사용하여 카카오톡 창을 찾음
-            app = pywinauto.Application(backend="uia").connect(title_re=".*카카오톡.*")
-            windows = app.windows()
+            # 모든 최상위 창 목록 가져오기
+            def list_top_windows():
+                windows = []
 
-            # 카카오톡 창 중에서 채팅 창을 식별
-            for w in windows:
-                if "카카오톡" in w.window_text() and w.is_visible():
-                    self.kakao_window = w
-                    print(f"카카오톡 창을 찾았습니다: {w.window_text()}")
-                    return True
+                def _enum(hwnd, _):
+                    title = win32gui.GetWindowText(hwnd)
+                    if title:
+                        windows.append((hwnd, title))
 
-            print("카카오톡 창을 찾을 수 없습니다.")
-            return False
+                win32gui.EnumWindows(_enum, None)
+                return windows
+
+            # 카카오톡 창 찾기
+            kakao_windows = [(hwnd, title) for hwnd, title in list_top_windows() if "카카오톡" in title]
+
+            if not kakao_windows:
+                print("카카오톡 창을 찾을 수 없습니다.")
+                return False
+
+            # 첫 번째 카카오톡 창 사용
+            hwnd, title = kakao_windows[0]
+            print(f"카카오톡 창을 찾았습니다: {title}, HWND={hwnd}")
+
+            # pywinauto로 특정 핸들에 연결
+            app = pywinauto.Application(backend="uia").connect(handle=hwnd)
+            self.kakao_window = app.window(handle=hwnd)
+
+            return True
         except Exception as e:
             print(f"카카오톡 창 찾기 오류: {e}")
             return False
@@ -312,6 +411,7 @@ class KakaoTalkAssistant(QWidget):
             try:
                 # 카카오톡 창을 활성화
                 self.kakao_window.set_focus()
+                time.sleep(0.5)
 
                 # 편집 영역에 붙여넣기 (Ctrl+V)
                 pywinauto.keyboard.send_keys('^v')
@@ -320,6 +420,10 @@ class KakaoTalkAssistant(QWidget):
 
             except Exception as e:
                 print(f"자동 붙여넣기 중 오류: {e}")
+                traceback.print_exc()
+                QMessageBox.warning(self, "붙여넣기 오류", f"카카오톡에 메시지를 붙여넣는 중 오류가 발생했습니다: {e}")
+        else:
+            QMessageBox.information(self, "복사 완료", "선택한 답변이 클립보드에 복사되었습니다.")
 
 
 if __name__ == "__main__":
