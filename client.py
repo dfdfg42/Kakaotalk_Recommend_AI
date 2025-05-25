@@ -16,8 +16,11 @@ import win32clipboard
 import ctypes
 from ctypes import wintypes
 
+from openai import OpenAI
+
 # OpenAI API 키 설정
-openai.api_key = "your-api-key-here"  # 실제 API 키로 변경하세요
+client = OpenAI(api_key="" )
+
 
 
 class SafeWindowHandler:
@@ -733,7 +736,7 @@ class StableKakaoTalkAssistant(QWidget):
             return
 
         try:
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {
