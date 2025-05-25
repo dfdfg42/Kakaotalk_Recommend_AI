@@ -1,7 +1,7 @@
 # config.py - 설정 및 상수
 
 # OpenAI API 키 설정
-OPENAI_API_KEY = "your-api-key-here"  # 실제 API 키로 변경하세요
+OPENAI_API_KEY = ""  # 실제 API 키로 변경하세요
 
 # UI 설정
 WINDOW_WIDTH = 350

@@ -17,6 +17,8 @@ from window_handler import SafeWindowHandler
 from window_scanner import WindowManager
 from ui_components import UIComponents
 
+# OpenAI API 키 설정
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 class KakaoTalkAssistant(QWidget):
     """카카오톡 답변 추천 메인 애플리케이션"""
@@ -24,8 +26,7 @@ class KakaoTalkAssistant(QWidget):
     def __init__(self):
         super().__init__()
 
-        # OpenAI API 키 설정
-        client = OpenAI(api_key=OPENAI_API_KEY)
+
 
 
         # 윈도우 설정
