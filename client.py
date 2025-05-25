@@ -19,9 +19,7 @@ from ctypes import wintypes
 from openai import OpenAI
 
 # OpenAI API 키 설정
-client = OpenAI(api_key="" )
-
-
+client = OpenAI(api_key="")
 
 class SafeWindowHandler:
     """안전한 윈도우 핸들링 클래스"""
@@ -111,21 +109,80 @@ class SafeWindowHandler:
             ]
 
             for x_ratio, y_ratio in click_positions:
-                if SafeWindowHandler.click_window_area(hwnd, x_ratio, y_ratio):
-                    # 클릭 후 잠시 기다리고 테스트
-                    time.sleep(0.2)
+                try:
+                    if SafeWindowHandler.click_window_area(hwnd, x_ratio, y_ratio):
+                        # 클릭 후 잠시 기다리고 테스트
+                        time.sleep(0.2)
 
-                    # Ctrl+A를 눌러서 선택이 되는지 테스트
-                    if SafeWindowHandler.safe_send_keys("^a"):
-                        time.sleep(0.1)
-                        # 선택된 내용이 있는지 간접적으로 확인
-                        # (실제로는 Ctrl+C 후 클립보드 확인으로 검증)
-                        return True
+                        # Ctrl+A를 눌러서 선택이 되는지 테스트
+                        if SafeWindowHandler.safe_send_keys("^a"):
+                            time.sleep(0.1)
+                            # 선택된 내용이 있는지 간접적으로 확인
+                            return True
+                except Exception as e:
+                    print(f"클릭 위치 시도 실패: {e}")
+                    continue
 
             return False
 
         except Exception as e:
             print(f"대화 영역 찾기 실패: {e}")
+            return False
+
+    @staticmethod
+    def find_input_area_and_click(hwnd):
+        """카카오톡 입력창을 찾아서 클릭"""
+        try:
+            rect = SafeWindowHandler.get_window_rect(hwnd)
+            if not rect:
+                return False
+
+            # 입력창은 보통 창의 하단부에 위치
+            # 카카오톡 입력창 위치 시도
+            input_positions = [
+                (0.5, 0.85),  # 하단 중앙 (일반적)
+                (0.5, 0.90),  # 하단 중앙 (더 아래)
+                (0.5, 0.80),  # 하단 중앙 (위쪽)
+                (0.3, 0.85),  # 하단 좌측
+                (0.7, 0.85),  # 하단 우측
+                (0.5, 0.75),  # 중하단
+            ]
+
+            for x_ratio, y_ratio in input_positions:
+                try:
+                    if SafeWindowHandler.click_window_area(hwnd, x_ratio, y_ratio):
+                        time.sleep(0.2)
+
+                        # 입력창인지 테스트 (간단한 텍스트 입력 시도)
+                        test_text = "test"
+
+                        # 기존 내용 선택 후 테스트 텍스트 입력
+                        SafeWindowHandler.safe_send_keys("^a")
+                        time.sleep(0.1)
+
+                        # 테스트 텍스트 입력
+                        for char in test_text:
+                            SafeWindowHandler.send_char(char)
+                            time.sleep(0.05)
+
+                        time.sleep(0.1)
+
+                        # 테스트 텍스트 삭제 (Ctrl+A 후 Delete)
+                        SafeWindowHandler.safe_send_keys("^a")
+                        time.sleep(0.05)
+                        ctypes.windll.user32.keybd_event(0x2E, 0, 0, 0)  # Delete down
+                        ctypes.windll.user32.keybd_event(0x2E, 0, 2, 0)  # Delete up
+                        time.sleep(0.1)
+
+                        return True  # 입력이 성공했다면 입력창으로 간주
+                except Exception as e:
+                    print(f"입력창 테스트 실패: {e}")
+                    continue
+
+            return False
+
+        except Exception as e:
+            print(f"입력창 찾기 실패: {e}")
             return False
 
     @staticmethod
@@ -190,6 +247,27 @@ class SafeWindowHandler:
             print(f"키 입력 실패: {e}")
             return False
 
+    @staticmethod
+    def send_char(char):
+        """개별 문자 입력"""
+        try:
+            # 유니코드 문자 입력
+            ctypes.windll.user32.keybd_event(0, ord(char), 4, 0)  # KEYEVENTF_UNICODE
+            time.sleep(0.01)
+        except Exception as e:
+            print(f"문자 입력 실패: {e}")
+
+    @staticmethod
+    def send_enter():
+        """엔터 키 입력"""
+        try:
+            ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)  # Enter down
+            ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)  # Enter up
+            return True
+        except Exception as e:
+            print(f"엔터 입력 실패: {e}")
+            return False
+
 
 class WindowScanThread(QThread):
     """윈도우 스캔을 위한 별도 스레드"""
@@ -239,12 +317,12 @@ class StableKakaoTalkAssistant(QWidget):
         super().__init__()
 
         # 윈도우 설정
-        self.setWindowTitle('카카오톡 답변 추천 (안정화 버전)')
+        self.setWindowTitle('카카오톡 답변 추천 (완전 자동화 버전)')
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         # 창 크기 및 위치
-        self.resize(350, 450)
+        self.resize(350, 500)
         self.position_window()
 
         # 변수 초기화
@@ -643,7 +721,8 @@ class StableKakaoTalkAssistant(QWidget):
                             self.status_label.setText(f"성공! {len(chat_content)}자 가져옴")
                             self.status_label.setStyleSheet("color: #38A169; font-size: 10px; padding: 5px;")
 
-                            QMessageBox.information(self, "✅ 성공", f"대화 내용을 자동으로 가져왔습니다!")
+                            QMessageBox.information(self, "✅ 성공",
+                                                    f"대화 내용을 자동으로 가져왔습니다!\n\n📊 길이: {len(chat_content)} 문자\n💬 첫 줄: {chat_content.split()[0] if chat_content.split() else '(내용 없음)'}")
                             success = True
 
                     except Exception as e:
@@ -771,7 +850,7 @@ class StableKakaoTalkAssistant(QWidget):
                 self.suggestion_buttons[i].setProperty("full_text", suggestion)
 
     def safe_use_suggestion(self, index):
-        """안전한 답변 사용"""
+        """안전한 답변 사용 (입력창 자동 탐지 + 전송)"""
         if index >= len(self.suggestion_buttons):
             return
 
@@ -798,14 +877,100 @@ class StableKakaoTalkAssistant(QWidget):
             return
 
         try:
-            # 안전한 붙여넣기
-            if SafeWindowHandler.safe_send_keys("^v", hwnd):
-                QMessageBox.information(self, "전송 완료", "답변이 카카오톡에 입력되었습니다!")
+            # 상태 업데이트
+            self.status_label.setText("입력창을 찾는 중...")
+            self.status_label.setStyleSheet("color: #3182CE; font-size: 10px; padding: 5px;")
+            QApplication.processEvents()
+
+            # 1단계: 입력창 찾아서 클릭
+            input_found = SafeWindowHandler.find_input_area_and_click(hwnd)
+
+            if input_found:
+                self.status_label.setText("입력창 발견! 메시지 입력 중...")
+                QApplication.processEvents()
             else:
-                QMessageBox.warning(self, "입력 실패", "자동 입력에 실패했습니다.\n수동으로 붙여넣어주세요.")
+                # 기본 입력창 위치 시도
+                self.status_label.setText("기본 입력창 위치 시도 중...")
+                QApplication.processEvents()
+                SafeWindowHandler.click_window_area(hwnd, 0.5, 0.85)
+
+            time.sleep(0.5)  # 클릭 후 안정화
+
+            # 2단계: 메시지 입력
+            success = False
+
+            # 방법 1: 클립보드 붙여넣기 (가장 안전)
+            if SafeWindowHandler.safe_send_keys("^v", hwnd):
+                time.sleep(0.3)
+                self.status_label.setText("메시지 입력 완료!")
+                QApplication.processEvents()
+                success = True
+
+            # 방법 2: 직접 타이핑 (붙여넣기 실패 시)
+            if not success:
+                self.status_label.setText("직접 입력 방식으로 재시도...")
+                QApplication.processEvents()
+
+                # 기존 내용 지우기
+                SafeWindowHandler.safe_send_keys("^a")
+                time.sleep(0.1)
+                ctypes.windll.user32.keybd_event(0x2E, 0, 0, 0)  # Delete
+                ctypes.windll.user32.keybd_event(0x2E, 0, 2, 0)
+                time.sleep(0.2)
+
+                # 문자 하나씩 입력 (한글 지원)
+                for char in full_text:
+                    SafeWindowHandler.send_char(char)
+                    time.sleep(0.02)
+
+                success = True
+                self.status_label.setText("직접 입력 완료!")
+                QApplication.processEvents()
+
+            if success:
+                # 전송 여부 묻기
+                reply = QMessageBox.question(
+                    self,
+                    "🚀 전송 확인",
+                    f"다음 메시지를 전송하시겠습니까?\n\n💬 \"{full_text[:100]}{'...' if len(full_text) > 100 else ''}\"\n\n✅ 확인을 누르면 자동으로 전송됩니다.\n❌ 취소를 누르면 입력만 하고 전송하지 않습니다.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+
+                if reply == QMessageBox.Yes:
+                    # 3단계: 엔터로 전송
+                    time.sleep(0.3)
+                    if SafeWindowHandler.send_enter():
+                        self.status_label.setText("✅ 메시지 전송 완료!")
+                        self.status_label.setStyleSheet("color: #38A169; font-size: 10px; padding: 5px;")
+
+                        QMessageBox.information(
+                            self,
+                            "🎉 전송 성공!",
+                            f"메시지가 성공적으로 전송되었습니다!\n\n📤 전송된 내용:\n\"{full_text[:150]}{'...' if len(full_text) > 150 else ''}\""
+                        )
+
+                        # 추천 답변 숨기기
+                        self.suggestions_frame.setVisible(False)
+
+                    else:
+                        self.status_label.setText("⚠️ 전송 실패")
+                        self.status_label.setStyleSheet("color: #E53E3E; font-size: 10px; padding: 5px;")
+                        QMessageBox.warning(self, "전송 실패", "자동 전송에 실패했습니다.\n수동으로 엔터를 눌러주세요.")
+                else:
+                    self.status_label.setText("✏️ 입력 완료 (전송 안함)")
+                    self.status_label.setStyleSheet("color: #3182CE; font-size: 10px; padding: 5px;")
+                    QMessageBox.information(self, "입력 완료", "메시지가 입력되었습니다.\n원하실 때 엔터를 눌러 전송하세요.")
+            else:
+                self.status_label.setText("❌ 입력 실패")
+                self.status_label.setStyleSheet("color: #E53E3E; font-size: 10px; padding: 5px;")
+                QMessageBox.warning(self, "입력 실패", "메시지 입력에 실패했습니다.\n수동으로 붙여넣어주세요.")
 
         except Exception as e:
-            QMessageBox.warning(self, "전송 실패", f"답변 전송 실패:\n{str(e)}")
+            self.status_label.setText("❌ 오류 발생")
+            self.status_label.setStyleSheet("color: #E53E3E; font-size: 10px; padding: 5px;")
+            QMessageBox.warning(self, "전송 실패",
+                                f"답변 전송 실패:\n\n{str(e)}\n\n🔧 해결책:\n- 카카오톡 창을 활성화\n- 입력창을 직접 클릭\n- Ctrl+V로 수동 붙여넣기")
 
     # 마우스 이벤트 (드래그)
     def mousePressEvent(self, event):
