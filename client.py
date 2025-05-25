@@ -21,6 +21,7 @@ from openai import OpenAI
 # OpenAI API 키 설정
 client = OpenAI(api_key="")
 
+
 class SafeWindowHandler:
     """안전한 윈도우 핸들링 클래스"""
 
@@ -938,25 +939,49 @@ class StableKakaoTalkAssistant(QWidget):
                 )
 
                 if reply == QMessageBox.Yes:
-                    # 3단계: 엔터로 전송
-                    time.sleep(0.3)
-                    if SafeWindowHandler.send_enter():
-                        self.status_label.setText("✅ 메시지 전송 완료!")
-                        self.status_label.setStyleSheet("color: #38A169; font-size: 10px; padding: 5px;")
+                    self.status_label.setText("카카오톡으로 포커스 이동 중...")
+                    QApplication.processEvents()
 
-                        QMessageBox.information(
-                            self,
-                            "🎉 전송 성공!",
-                            f"메시지가 성공적으로 전송되었습니다!\n\n📤 전송된 내용:\n\"{full_text[:150]}{'...' if len(full_text) > 150 else ''}\""
-                        )
+                    # 3단계: 카카오톡 창으로 다시 포커스 이동 후 엔터
+                    try:
+                        # 카카오톡 창을 다시 활성화
+                        win32gui.SetForegroundWindow(hwnd)
+                        time.sleep(0.5)  # 포커스 이동 대기
 
-                        # 추천 답변 숨기기
-                        self.suggestions_frame.setVisible(False)
+                        # 입력창을 다시 클릭해서 확실히 포커스 설정
+                        SafeWindowHandler.click_window_area(hwnd, 0.5, 0.85)
+                        time.sleep(0.3)
 
-                    else:
-                        self.status_label.setText("⚠️ 전송 실패")
+                        self.status_label.setText("전송 중...")
+                        QApplication.processEvents()
+
+                        # 엔터 키로 전송
+                        if SafeWindowHandler.send_enter():
+                            time.sleep(0.5)  # 전송 완료 대기
+
+                            self.status_label.setText("✅ 메시지 전송 완료!")
+                            self.status_label.setStyleSheet("color: #38A169; font-size: 10px; padding: 5px;")
+
+                            # 전송 성공 알림 (non-blocking)
+                            QTimer.singleShot(100, lambda: QMessageBox.information(
+                                self,
+                                "🎉 전송 성공!",
+                                f"메시지가 성공적으로 전송되었습니다!\n\n📤 전송된 내용:\n\"{full_text[:150]}{'...' if len(full_text) > 150 else ''}\""
+                            ))
+
+                            # 추천 답변 숨기기
+                            self.suggestions_frame.setVisible(False)
+
+                        else:
+                            self.status_label.setText("⚠️ 전송 실패 - 수동으로 엔터 눌러주세요")
+                            self.status_label.setStyleSheet("color: #E53E3E; font-size: 10px; padding: 5px;")
+
+                    except Exception as e:
+                        self.status_label.setText("⚠️ 포커스 이동 실패")
                         self.status_label.setStyleSheet("color: #E53E3E; font-size: 10px; padding: 5px;")
-                        QMessageBox.warning(self, "전송 실패", "자동 전송에 실패했습니다.\n수동으로 엔터를 눌러주세요.")
+                        QMessageBox.warning(self, "전송 실패",
+                                            f"카카오톡 포커스 이동 실패:\n{str(e)}\n\n💡 해결책: 카카오톡 창을 클릭하고 수동으로 엔터를 눌러주세요.")
+
                 else:
                     self.status_label.setText("✏️ 입력 완료 (전송 안함)")
                     self.status_label.setStyleSheet("color: #3182CE; font-size: 10px; padding: 5px;")
