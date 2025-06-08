@@ -181,7 +181,7 @@ class UIComponents:
 
         layout = QVBoxLayout(frame)
 
-        title = QLabel("💬 고경우 답변 추천 (클릭하여 전송)")
+        title = QLabel("💬 답변 추천 (클릭하여 전송)")
         title.setFont(QFont("맑은 고딕", 9, QFont.Bold))
         title.setStyleSheet(f"color: {COLORS['text']}; margin-bottom: 5px;")
         layout.addWidget(title)
